@@ -4,6 +4,8 @@ const http = require('http')
 const handler = require('serve-handler')
 const consola = require('consola')
 
+const errorTemplate = require('../views/error.js')
+
 const timers = {}
 
 consola.time = function (name) {
@@ -62,7 +64,14 @@ const server = http.createServer(async function (req, res) {
       if (require.cache[require.resolve(directory + '/api/' + script)]) {
         delete require.cache[require.resolve(directory + '/api/' + script)]
       }
-      return require(directory + '/api/' + script)(req, res)
+      try {
+        const func = require(directory + '/api/' + script)
+        return func(req, res)
+      } catch {
+        const template = errorTemplate({ statusCode: 500, message: 'Intrnal server error' })
+
+        return res.send(template)
+      }
     }
   }
   return handler(req, res, {
