@@ -1,0 +1,21 @@
+{
+  "name": "nu-cli",
+  "version": "0.0.1",
+  "description": "",
+  "main": "bin/index.js",
+  "scripts": {
+    "build": "node ./bin/index.js"
+  },
+  "keywords": [],
+  "author": "Adam Emrts (adam.emrts@gmail.com)",
+  "license": "WTFPL",
+  "dependencies": {
+    "consola": "^2.11.3",
+    "express": "^4.17.1",
+    "nodemon": "^2.0.2",
+    "serve-handler": "^6.1.2"
+  },
+  "bin": {
+    "nu": "./bin/index.js"
+  }
+}
