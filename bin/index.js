@@ -67,10 +67,10 @@ const server = http.createServer(async function (req, res) {
       try {
         const func = require(directory + '/api/' + script)
         return func(req, res)
-      } catch {
-        const template = errorTemplate({ statusCode: 500, message: 'Intrnal server error' })
-
-        return res.send(template)
+      } catch (err) {
+        const template = errorTemplate({ statusCode: 500, message: 'Internal Server Error' })
+        if (err) consola.error(err)
+        return res.status(500).send(template)
       }
     }
   }
