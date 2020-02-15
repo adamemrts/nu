@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+const quiet = process.argv.includes('-q') || process.argv.includes('--quiet')
+if (quiet) {
+  console.log = () => {}
+  console.time = () => {}
+  console.timeEnd = () => {}
+}
+
 const http = require('http')
 const handler = require('serve-handler')
 const consola = require('consola')
@@ -30,7 +37,6 @@ consola.successEnd = function (name, ...payload) {
 
 const addHelpers = require('../addHelpers.js')
 const fs = require('fs')
-const nodemon = require('nodemon')
 
 const directory = process.cwd()
 const files = fs.existsSync(directory + '/api')
@@ -110,6 +116,13 @@ const serverErrorHandler = async (error, port) => {
   }
 }
 
+const nodemon = require('nodemon')
+const nodemonQuiet = {
+  stdout: false,
+  readable: false,
+  quiet: true
+}
+
 initServer().then(port => {
   consola.success(`Server listening on port: ${port}`)
 
@@ -118,7 +131,16 @@ initServer().then(port => {
   if (build) {
     consola.info(`Running '${build}'`)
     const msg = `Done '${build}'`
-    nodemon({ exec: build, ignore: ['public/*', 'api/*'] })
+    nodemon(quiet
+      ? {
+        exec: build,
+        ignore: ['public/*', 'api/*'],
+        ...nodemonQuiet
+      }
+      : {
+        exec: build,
+        ignore: ['public/*', 'api/*']
+      })
       .on('start', () => consola.time(msg))
       .on('exit', () => consola.successEnd(msg))
       .on('crash', () => consola.error('Script crashed', build))
