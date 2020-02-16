@@ -1,6 +1,54 @@
 #!/usr/bin/env node
+const consola = require('consola')
 
-const quiet = process.argv.includes('-q') || process.argv.includes('--quiet')
+const moduleCache = process.argv.includes('-mc') || process.argv.includes('--moduleCache') || process.argv.includes('--module-cache') || false
+consola.info(`Running lambdas with${moduleCache ? '' : 'out'} cache`)
+/**
+ * Removes a module from the cache
+ */
+function purgeCache (moduleName) {
+  // Traverse the cache looking for the files
+  // loaded by the specified module name
+  searchCache(moduleName, function (mod) {
+    delete require.cache[mod.id]
+  })
+
+  // Remove cached paths to the module.
+  // Thanks to @bentael for pointing this out.
+  Object.keys(module.constructor._pathCache).forEach(function (cacheKey) {
+    if (cacheKey.indexOf(moduleName) > 0) {
+      delete module.constructor._pathCache[cacheKey]
+    }
+  })
+}
+
+/**
+* Traverses the cache to search for all the cached
+* files of the specified module name
+*/
+function searchCache (moduleName, callback) {
+  // Resolve the module identified by the specified name
+  var mod = require.resolve(moduleName)
+
+  // Check if the module has been resolved and found within
+  // the cache
+  if (mod && ((mod = require.cache[mod]) !== undefined)) {
+    // Recursively go over the results
+    (function traverse (mod) {
+      // Go over each of the module's children and
+      // traverse them
+      mod.children.forEach(function (child) {
+        traverse(child)
+      })
+
+      // Call the specified callback providing the
+      // found cached module
+      callback(mod)
+    }(mod))
+  }
+}
+
+const quiet = process.argv.includes('-q') || process.argv.includes('--quiet') || false
 if (quiet) {
   console.log = () => {}
   console.time = () => {}
@@ -9,7 +57,6 @@ if (quiet) {
 
 const http = require('http')
 const handler = require('serve-handler')
-const consola = require('consola')
 
 const errorTemplate = require('../views/error.js')
 
@@ -65,13 +112,12 @@ const server = http.createServer(async function (req, res) {
   addLogger(req, res)
   if (req.url.startsWith('/api/')) {
     const script = files.find(filename => req.url.startsWith('/api/' + filename))
-    if (script && fs.existsSync(directory + '/api/' + script)) {
+    const module = directory + '/api/' + script
+    if (script && fs.existsSync(module)) {
       await addHelpers(req, res)
-      if (require.cache[require.resolve(directory + '/api/' + script)]) {
-        delete require.cache[require.resolve(directory + '/api/' + script)]
-      }
+      if (!moduleCache) purgeCache(module)
       try {
-        const func = require(directory + '/api/' + script)
+        const func = require(module)
         return func(req, res)
       } catch (err) {
         const template = errorTemplate({ statusCode: 500, message: 'Internal Server Error' })
