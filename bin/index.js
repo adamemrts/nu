@@ -1,52 +1,9 @@
 #!/usr/bin/env node
-const consola = require('consola')
+const consola = require('../utils/consola.js')
+const purgeCache = require('../utils/purgeCache.js')
 
 const moduleCache = process.argv.includes('-mc') || process.argv.includes('--moduleCache') || process.argv.includes('--module-cache') || false
 consola.info(`Running lambdas with${moduleCache ? '' : 'out'} cache`)
-/**
- * Removes a module from the cache
- */
-function purgeCache (moduleName) {
-  // Traverse the cache looking for the files
-  // loaded by the specified module name
-  searchCache(moduleName, function (mod) {
-    delete require.cache[mod.id]
-  })
-
-  // Remove cached paths to the module.
-  // Thanks to @bentael for pointing this out.
-  Object.keys(module.constructor._pathCache).forEach(function (cacheKey) {
-    if (cacheKey.indexOf(moduleName) > 0) {
-      delete module.constructor._pathCache[cacheKey]
-    }
-  })
-}
-
-/**
-* Traverses the cache to search for all the cached
-* files of the specified module name
-*/
-function searchCache (moduleName, callback) {
-  // Resolve the module identified by the specified name
-  var mod = require.resolve(moduleName)
-
-  // Check if the module has been resolved and found within
-  // the cache
-  if (mod && ((mod = require.cache[mod]) !== undefined)) {
-    // Recursively go over the results
-    (function traverse (mod) {
-      // Go over each of the module's children and
-      // traverse them
-      mod.children.forEach(function (child) {
-        traverse(child)
-      })
-
-      // Call the specified callback providing the
-      // found cached module
-      callback(mod)
-    }(mod))
-  }
-}
 
 const quiet = process.argv.includes('-q') || process.argv.includes('--quiet') || false
 if (quiet) {
@@ -58,31 +15,9 @@ if (quiet) {
 const http = require('http')
 const handler = require('serve-handler')
 
-const errorTemplate = require('../views/error.js')
+const errorTemplate = require('../utils/error.js')
 
-const timers = {}
-
-consola.time = function (name) {
-  if (name) {
-    timers[name] = Date.now()
-  }
-}
-
-consola.timeEnd = function (name, ...payload) {
-  if (timers[name]) {
-    consola.info(`${name}${payload && payload.length ? ' ' + payload.join(' ') : ''}`, '[' + (Date.now() - timers[name]) + 'ms]')
-    delete timers[name]
-  }
-}
-
-consola.successEnd = function (name, ...payload) {
-  if (timers[name]) {
-    consola.success(`${name}${payload && payload.length ? ' ' + payload.join(' ') : ''}`, '[' + (Date.now() - timers[name]) + 'ms]')
-    delete timers[name]
-  }
-}
-
-const addHelpers = require('../addHelpers.js')
+const addHelpers = require('../utils/addHelpers.js')
 const fs = require('fs')
 
 const directory = process.cwd()
@@ -107,6 +42,12 @@ const addLogger = (req, res) => {
   })
 }
 
+const lambdaErrorHandler = (error, res) => {
+  const template = errorTemplate({ statusCode: 505, message: 'Internal Server Error' })
+  if (error) consola.error(error)
+  return res.status(500).send(template)
+}
+
 // create a server object:
 const server = http.createServer(async function (req, res) {
   addLogger(req, res)
@@ -119,16 +60,16 @@ const server = http.createServer(async function (req, res) {
       try {
         const func = require(module)
         return func(req, res)
+          .catch(err => lambdaErrorHandler(err, res))
       } catch (err) {
-        const template = errorTemplate({ statusCode: 500, message: 'Internal Server Error' })
-        if (err) consola.error(err)
-        return res.status(500).send(template)
+        lambdaErrorHandler(err, res)
       }
     }
+  } else {
+    return handler(req, res, {
+      public: directory + '/public'
+    })
   }
-  return handler(req, res, {
-    public: directory + '/public'
-  })
 })
 
 const closeServer = async () => {
